@@ -1,0 +1,65 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <sys/ipc.h>
+#include <sys/msg.h>
+
+#define MAX_MSG_SIZE 256
+
+struct msg_buffer {
+    long msg_type;
+    char msg_text[MAX_MSG_SIZE];
+};
+
+int main() {
+    int msgid;
+    key_t key;
+    struct msg_buffer message;
+
+    key = ftok("/tmp", 'A');
+    if (key == -1) {
+        perror("ftok");
+        exit(EXIT_FAILURE);
+    }
+
+    msgid = msgget(key, IPC_CREAT | 0666);
+    if (msgid == -1) {
+        perror("msgget");
+        exit(EXIT_FAILURE);
+    }
+
+    pid_t pid = fork();
+
+    if (pid == -1) {
+        perror("fork");
+        exit(EXIT_FAILURE);
+    }
+
+    if (pid == 0) { 
+        if (msgrcv(msgid, &message, MAX_MSG_SIZE, 1, 0) == -1) {
+            perror("msgrcv");
+            exit(EXIT_FAILURE);
+        }
+        printf("Child process received message: %s\n", message.msg_text);
+    } else {
+        
+        printf("Enter message: ");
+        fgets(message.msg_text, MAX_MSG_SIZE, stdin);
+        
+        message.msg_text[strcspn(message.msg_text, "\n")] = 0;
+        message.msg_type = 1;
+        if (msgsnd(msgid, &message, strlen(message.msg_text) + 1, 0) == -1) {
+            perror("msgsnd");
+            exit(EXIT_FAILURE);
+        }
+        printf("Parent process sent message: %s\n", message.msg_text);
+    }
+
+    if (msgctl(msgid, IPC_RMID, NULL) == -1) {
+        perror("msgctl");
+        exit(EXIT_FAILURE);
+    }
+
+    return 0;
+}
